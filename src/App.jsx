@@ -3,11 +3,25 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import './App.css';
 
 function App() {
-  const [username, setUsername] = useState(null);
+  const USERNAME = 'tom.cat';
+  const [username, setUsername] = useState(USERNAME);
   const [conversationId, setConversationId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [status, setStatus] = useState('idle');
   const inputRef = useRef(null);
+  const chatWindowRef = useRef(null);
+
+  useEffect(() => {
+    const chatWindow = chatWindowRef.current;
+    if (!chatWindow) return;
+
+    requestAnimationFrame(() => {
+      chatWindow.scrollTo({
+        top: chatWindow.scrollHeight,
+        behavior: 'smooth',
+      });
+    });
+  }, [chatMessages]);
 
   function toISOStringWithTZ(date = new Date(), timeZone = 'America/New_York') {
     // Format individual parts using the specified timezone
@@ -37,6 +51,7 @@ function App() {
     return `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}:${parts.second}${offset}`;
   }
 
+  const UPDATE_CONVERSATION_API = 'http://127.0.0.1:5090/api/update-conversation';
   const updateConversation = async (text) => {
     const requestPayload = {
       "username": username,
@@ -53,7 +68,7 @@ function App() {
     };
     setChatMessages((prev) => [...prev, userMessage]);
     setStatus('loading');
-    await fetchEventSource('http://127.0.0.1:5090/api/update-conversation', {
+    await fetchEventSource(UPDATE_CONVERSATION_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -102,19 +117,36 @@ function App() {
     inputRef.current.value = ''; // Clear input
   };
 
+  const CREATE_CONVERSATION_API = 'http://127.0.0.1:5090/api/create-conversation';
   useEffect(() => {
     const createConversation = async () => {
+      console.log('Creating conversation for username:', username);
+      if (conversationId) {
+        console.log('Conversation already exists with ID:', conversationId);
+        return; // Exit if conversationId is set, preventing multiple calls
+      }
       try {
-        const userConversationData = { username: 'tom.cat', conversationId: 'CONV#20260906184602' };
-        setUsername(userConversationData.username);
-        setConversationId(userConversationData.conversationId);
+        const requestPayload = { 
+          "username": username, 
+          "channel": "web-app" 
+        };
+        const response = await fetch(CREATE_CONVERSATION_API, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestPayload),
+        });
+        const userConversationData = await response.json();
+        setConversationId(userConversationData.conversation_id);
+        console.log('Conversation created with ID:', userConversationData.conversation_id);
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
     };
     createConversation();
   }, []);
-
+  /*
   useEffect(() => {
     const fetchChatMessages = async () => {
       try {
@@ -130,7 +162,7 @@ function App() {
 
     fetchChatMessages();
   }, []);
-
+  */
   return (
     <>
       <div className="app-shell">
@@ -142,7 +174,7 @@ function App() {
                 <h2>I'll help you with any questions you have!</h2>
               </div>
             </div>
-            <div className="chat-window">
+            <div ref={chatWindowRef} className="chat-window">
                   {chatMessages.map((message) => (
                     <div key={message.id} className={`message ${message.sender === 'User' ? 'user' : 'system'}`}>
                       <div className={`message-bubble ${message.sender === 'User' ? 'user-bubble' : ''}`}>
