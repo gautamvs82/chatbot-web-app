@@ -7,7 +7,7 @@ function App() {
   const [username, setUsername] = useState(USERNAME);
   const [conversationId, setConversationId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
-  const [status, setStatus] = useState('idle');
+  const [conversationStatus, setConversationStatus] = useState(null);
   const inputRef = useRef(null);
   const chatWindowRef = useRef(null);
 
@@ -67,7 +67,6 @@ function App() {
       sent_at: requestPayload.sent_at,
     };
     setChatMessages((prev) => [...prev, userMessage]);
-    setStatus('loading');
     await fetchEventSource(UPDATE_CONVERSATION_API, {
       method: 'POST',
       headers: {
@@ -92,7 +91,7 @@ function App() {
             break;
 
           case 'message-complete':
-            setStatus(`Finished: ${parsedData.data.status}`);
+            console.log(`Finished: ${parsedData.data.status}`);
             break;
 
           default:
@@ -102,9 +101,37 @@ function App() {
 
       onerror(err) {
         console.error('SSE Stream Error:', err);
-        setStatus('error');
       },
     });
+  };
+
+  const CLOSE_CONVERSATION_API = 'http://127.0.0.1:5090/api/close-conversation';
+  const handleCloseConversation = async () => {
+    if (!conversationId) {
+      console.warn('No conversation ID available to close.');
+      return;
+    }
+    const requestPayload = {
+      "username": username,
+      "conversation_id": conversationId,
+      "closed_by": "User",
+      "close_reason": "The user clicked Close button"
+    }
+    try {
+      const response = await fetch(CLOSE_CONVERSATION_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to close conversation');
+      }
+      setConversationStatus('closed');
+    } catch (error) {
+      console.error('Error closing conversation:', error);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -139,6 +166,7 @@ function App() {
         });
         const userConversationData = await response.json();
         setConversationId(userConversationData.conversation_id);
+        setConversationStatus(userConversationData.status);
         console.log('Conversation created with ID:', userConversationData.conversation_id);
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -173,6 +201,9 @@ function App() {
                 <p className="panel-label">Customer Support Chat</p>
                 <h2>I'll help you with any questions you have!</h2>
               </div>
+              <button className="close-button" disabled={conversationStatus === 'closed'} onClick={handleCloseConversation}>
+                CLOSE
+              </button>
             </div>
             <div ref={chatWindowRef} className="chat-window">
                   {chatMessages.map((message) => (
@@ -186,10 +217,14 @@ function App() {
                     </div>
                   ))}
             </div>
-            <form className="chat-form" onSubmit={handleSubmit}>
-              <input ref={inputRef} type="text" placeholder="Your message..." aria-label="Your message" />
-              <button type="submit">Send</button>
-            </form>
+            {(conversationStatus === 'open') ? (
+                    <form className="chat-form" onSubmit={handleSubmit}>
+                      <input ref={inputRef} type="text" placeholder="Your message..." aria-label="Your message" />
+                      <button type="submit">Send</button>
+                    </form>):(
+                      <p>Your conversation has been closed.</p>
+              )
+            }
           </div>
         </main>
       </div>
